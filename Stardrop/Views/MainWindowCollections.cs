@@ -110,7 +110,8 @@ namespace Stardrop.Views
                 // landing, in which case going round again is how the remaining entries get picked up
                 if (resolvedRevision == existingInstall.RevisionNumber && existingInstall.IsUpdateInProgress() is false)
                 {
-                    await CreateWarningWindow(String.Format(Program.translation.Get("ui.message.collection_already_installed"), existingInstall.Name, resolvedRevision), Program.translation.Get("internal.ok"));
+                    // Nothing to do rather than anything to answer, so it reports itself without stopping the flow
+                    NotificationCenter.Shared.Show(String.Format(Program.translation.Get("ui.message.collection_already_installed"), existingInstall.Name, resolvedRevision), NotificationKind.Info);
                     return false;
                 }
 
@@ -583,8 +584,8 @@ namespace Stardrop.Views
             {
                 // Never asked how to handle a mod already sitting at the target. The collection owns the version, so
                 // the previous copy always goes, and the configuration the prompt exists to protect is carried
-                // across separately above
-                await AddMods(orderedArchives.ToArray(), installPath, installedModsByArchive, replaceWithoutAsking: true);
+                // across separately above. The completion report is left to the collection's own summary
+                await AddMods(orderedArchives.ToArray(), installPath, installedModsByArchive, replaceWithoutAsking: true, suppressCompletionNotification: true);
 
                 RestoreReplacedConfigs(replacedConfigs, installPath);
 
@@ -671,7 +672,8 @@ namespace Stardrop.Views
                 await ReportCollectionResult(collection);
 
                 // After the summary rather than before it. Switching profiles can raise its own dialog over unsaved
-                // configuration on the profile being left, which would collide with the summary still being open
+                // configuration on the profile being left, which would collide with the summary window where one is
+                // raised. A collection that landed cleanly has only a notification, which nothing waits on
                 SelectCollectionProfile(profile);
 
                 return;
@@ -1483,7 +1485,7 @@ namespace Stardrop.Views
         /// Undoes a cancelled install. Nothing was written to the mod folder yet, as installing only happens after
         /// the download loop, so this comes down to clearing the archives that had already been fetched.
         /// </summary>
-        private async Task AbandonCollectionInstall(CollectionInstall collection, List<string> downloadedArchives, string installPath, string extractedArchivePath, bool isUpdate = false)
+        private Task AbandonCollectionInstall(CollectionInstall collection, List<string> downloadedArchives, string installPath, string extractedArchivePath, bool isUpdate = false)
         {
             Program.helper.Log($"Discarding the cancelled install of the collection {collection.Name}, removing {downloadedArchives.Count} downloaded archive(s)");
 
@@ -1505,7 +1507,10 @@ namespace Stardrop.Views
 
             SetLockState(false);
 
-            await CreateWarningWindow(String.Format(Program.translation.Get("ui.message.collection_install_cancelled"), collection.Name), Program.translation.Get("internal.ok"));
+            // The user asked for this, so it is a note rather than a warning, and nothing was installed to report
+            NotificationCenter.Shared.Show(String.Format(Program.translation.Get("ui.message.collection_install_cancelled"), collection.Name), NotificationKind.Info, durationSeconds: 8);
+
+            return Task.CompletedTask;
         }
 
         private static void TryDelete(string filePath)
@@ -2111,19 +2116,22 @@ namespace Stardrop.Views
 
         /// <summary>
         /// Reports what a single collection entry's link did. With the collections window open it goes into that
-        /// window's footer, since a user working down a list of missing entries is sending links over faster than
-        /// they could dismiss a dialog for each one. With the window closed there is nowhere to put it but a window
-        /// of its own.
+        /// window's footer; with the window closed it goes to the notification area of the main window. Either way
+        /// the user is told without a dialog, since someone working down a list of missing entries is sending links
+        /// over faster than they could dismiss one window per mod.
         /// </summary>
-        private async Task ReportCollectionEntryResult(string message, bool isFailure = false)
+        private Task ReportCollectionEntryResult(string message, bool isFailure = false)
         {
             if (_collectionsWindow is not null)
             {
                 _collectionsWindow.ShowStatusMessage(message, isFailure);
-                return;
+                return Task.CompletedTask;
             }
 
-            await CreateWarningWindow(message, Program.translation.Get("internal.ok"), windowWidth: 560);
+            // Failures sit longer and in their own colour, as those are the ones worth acting on
+            NotificationCenter.Shared.Show(message, isFailure ? NotificationKind.Warning : NotificationKind.Success, durationSeconds: isFailure ? 10 : Notification.DEFAULT_DURATION_SECONDS);
+
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -2469,7 +2477,9 @@ namespace Stardrop.Views
             }
 
             var installedModsByArchive = new Dictionary<string, List<Mod>>(StringComparer.OrdinalIgnoreCase);
-            await AddMods(new string[] { archivePath }, installPath, installedModsByArchive, replaceWithoutAsking: true);
+
+            // The caller reports this entry, so AddMods must not also report it
+            await AddMods(new string[] { archivePath }, installPath, installedModsByArchive, replaceWithoutAsking: true, suppressCompletionNotification: true);
 
             _viewModel.DiscoverMods(Pathing.defaultModPath);
 
@@ -2567,6 +2577,9 @@ namespace Stardrop.Views
         /// <summary>
         /// One summary at the end, rather than a dialog per mod. A large collection can easily have a dozen entries
         /// Stardrop cannot fetch itself and a dozen modals is not a usable experience.
+        ///
+        /// Only the parts that need the user are worth stopping for. A collection that landed cleanly reports itself
+        /// in the corner of the window, leaving the user looking at the mod list it just filled in.
         /// </summary>
         private async Task ReportCollectionResult(CollectionInstall collection)
         {
@@ -2577,6 +2590,26 @@ namespace Stardrop.Views
 
             // Overlays are configuration rather than mods, so counting them in the total would misreport the install
             var modCount = collection.Mods.Count - collection.GetOverlays().Count;
+
+            var heldOverlaysSection = BuildHeldOverlaysSection(collection);
+            var unmatchedFilesSection = BuildUnmatchedFilesSection(collection);
+
+            var needsAttention = manualDownloads.Count > 0
+                || failures.Count > 0
+                || conflicts.Count > 0
+                || String.IsNullOrEmpty(heldOverlaysSection) is false
+                || String.IsNullOrEmpty(unmatchedFilesSection) is false
+                || String.IsNullOrEmpty(collection.InstallInstructions) is false;
+
+            if (needsAttention is false)
+            {
+                NotificationCenter.Shared.Show(
+                    String.Format(Program.translation.Get("ui.notification.collection_installed"), installedCount, modCount, collection.Name),
+                    NotificationKind.Success,
+                    durationSeconds: 8);
+
+                return;
+            }
 
             // Escaped, as the report is parsed for links further down and a mod name can hold the same characters
             var summary = String.Format(Program.translation.Get("ui.message.collection_install_summary"), HyperlinkParser.Escape(collection.Name), installedCount, modCount);
@@ -2593,8 +2626,8 @@ namespace Stardrop.Views
                 summary += BuildEntryLines(collection, failures, includeFailureReasons: true);
             }
 
-            summary += BuildHeldOverlaysSection(collection);
-            summary += BuildUnmatchedFilesSection(collection);
+            summary += heldOverlaysSection;
+            summary += unmatchedFilesSection;
 
             if (conflicts.Count > 0)
             {
@@ -2618,10 +2651,39 @@ namespace Stardrop.Views
         /// <summary>
         /// Reports what applying a revision changed. Built around the difference rather than the totals, as a user
         /// who already had this collection is here to find out what moved rather than how many mods it holds.
+        ///
+        /// A revision that simply landed is reported without stopping the user. Anything outstanding, or anything
+        /// the curator wrote, still gets the window.
         /// </summary>
         private async Task ReportCollectionUpdateResult(CollectionInstall collection, CollectionUpdatePlan plan)
         {
             var appliedRevision = collection.IsUpdateInProgress() ? collection.PendingRevisionNumber!.Value : collection.RevisionNumber;
+
+            var manualDownloads = collection.GetManualDownloads();
+            var failures = collection.GetFailures();
+            var heldOverlaysSection = BuildHeldOverlaysSection(collection);
+            var unmatchedFilesSection = BuildUnmatchedFilesSection(collection);
+
+            var needsAttention = manualDownloads.Count > 0
+                || failures.Count > 0
+                || String.IsNullOrEmpty(heldOverlaysSection) is false
+                || String.IsNullOrEmpty(unmatchedFilesSection) is false
+                || String.IsNullOrEmpty(collection.InstallInstructions) is false
+                || collection.IsUpdateInProgress();
+
+            if (needsAttention is false)
+            {
+                var detail = plan.HasChanges()
+                    ? String.Format(Program.translation.Get("ui.message.collection_update_counts"), plan.Added.Count, plan.Replaced.Count, plan.Removed.Count, plan.Unchanged.Count)
+                    : Program.translation.Get("ui.message.collection_update_no_changes");
+
+                NotificationCenter.Shared.Show(
+                    String.Format(Program.translation.Get("ui.notification.collection_updated"), collection.Name, detail),
+                    NotificationKind.Success,
+                    durationSeconds: 8);
+
+                return;
+            }
 
             // Escaped, as the report is parsed for links further down and a collection name can hold the same characters
             var summary = String.Format(Program.translation.Get("ui.message.collection_update_summary"), HyperlinkParser.Escape(collection.Name), plan.Previous.RevisionNumber, appliedRevision);
@@ -2643,22 +2705,20 @@ namespace Stardrop.Views
                 summary += BuildEntryLines(collection, plan.Removed, includeFailureReasons: false);
             }
 
-            var manualDownloads = collection.GetManualDownloads();
             if (manualDownloads.Count > 0)
             {
                 summary += Environment.NewLine + Environment.NewLine + String.Format(Program.translation.Get("ui.message.collection_manual_downloads"), manualDownloads.Count);
                 summary += BuildEntryLines(collection, manualDownloads, includeFailureReasons: false);
             }
 
-            var failures = collection.GetFailures();
             if (failures.Count > 0)
             {
                 summary += Environment.NewLine + Environment.NewLine + String.Format(Program.translation.Get("ui.message.collection_failures"), failures.Count);
                 summary += BuildEntryLines(collection, failures, includeFailureReasons: true);
             }
 
-            summary += BuildHeldOverlaysSection(collection);
-            summary += BuildUnmatchedFilesSection(collection);
+            summary += heldOverlaysSection;
+            summary += unmatchedFilesSection;
 
             // Says outright that the revision has not landed, as the collections window will keep reporting an
             // update until whatever is outstanding is dealt with

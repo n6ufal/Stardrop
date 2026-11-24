@@ -249,6 +249,7 @@
   "ui.warning.mod_update_check_failed.footer": "Earlier checked updates are still shown. Please try again later or see the log file for details.",
   "ui.warning.SMAPI_up_to_date": "SMAPI is up-to-date.\n\n{0} is the latest version.",
   "ui.warning.install_mod_attempt_count": "Attempting to install {0} mod(s)",
+  "ui.warning.install_warnings": "{0} issue(s) were encountered while installing:",
   "ui.warning.mod_installing": "Installing {0}",
   "ui.warning.mod_updating": "Updating {0}",
   "ui.warning.mod_deleting": "Deleting old instance of {0}",
@@ -307,10 +308,16 @@
   "ui.message.confirm_nxm_association": "Would you like to associate the NXM protocol with Stardrop?\n\nThis will allow Stardrop to automatically install mods downloaded from Nexus Mods.",
   "ui.message.confirm_nxm_install": "Would you like to install the following mod:\n\n{0}\n\nYou can disable this confirmation in the settings menu.",
   "ui.message.require_nexus_login": "This action requires being signed into the Nexus Mods API.",
-  "ui.message.succeeded_nexus_install": "Successfully installed the following mod via Nexus Mods:\n\n{0}",
   "ui.message.confirm_mod_update_caution": "{0}\nUpdate Caution Message:\n\n{1}\n\nProceed with the mod update?",
   "ui.message.confirm_missing_mod_handling": "The following mods exist in the [{0}] profile but are currently not installed:\n\n{1}\n\nWould you like to manually install the missing mod(s)?",
   "ui.message.missing_mod_extra_count": "\n+ {0} other mod(s)",
+
+  // Notifications - reported in the corner of the main window rather than in a dialog, since a bulk install
+  // would otherwise leave one window to dismiss per mod
+  "ui.notification.mod_installed": "Installed {0}",
+  "ui.notification.mods_installed": "Installed {0} mods",
+  "ui.notification.collection_installed": "Installed {0} of {1} mods from the collection {2}",
+  "ui.notification.collection_updated": "Updated the collection {0}. {1}",
 
   // Window Names
   "ui.window.settings.name": "Settings",
@@ -343,6 +350,7 @@
   "internal.no": "No",
   "internal.no_all": "No to All",
   "internal.ok": "OK",
+  "internal.dismiss": "Dismiss",
   "internal.unlock": "Unlock",
   "internal.ignore": "Ignore",
   "internal.add_to_collection": "Add To Collection",

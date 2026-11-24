@@ -2281,8 +2281,8 @@ namespace Stardrop.Views
                 _viewModel.UpdateEndorsements();
                 _viewModel.UpdateFilter();
 
-                // Let the user know that the mod was installed via NXM
-                await CreateWarningWindow(String.Format(Program.translation.Get("ui.message.succeeded_nexus_install"), modDetails.Name), Program.translation.Get("internal.ok"));
+                // Nothing to confirm here: AddMods has already reported the install, and a link arriving from Nexus
+                // Mods should not need a dismissal before the next one can be handled
 
                 return NXMLinkResult.Success;
             }
@@ -3108,7 +3108,11 @@ namespace Stardrop.Views
         /// copy first. Used by the collection paths, where the collection decides the version and the user has
         /// already agreed to it, so asking once per mod would be dozens of prompts with one possible answer.
         /// </param>
-        private async Task<List<Mod>> AddMods(string[]? filePaths, string? installPathOverride = null, IDictionary<string, List<Mod>>? installedModsByArchive = null, bool replaceWithoutAsking = false)
+        /// <param name="suppressCompletionNotification">
+        /// Leaves the success report to the caller. Used where the install is one step of something larger, such as
+        /// a collection, whose own summary says what landed.
+        /// </param>
+        private async Task<List<Mod>> AddMods(string[]? filePaths, string? installPathOverride = null, IDictionary<string, List<Mod>>? installedModsByArchive = null, bool replaceWithoutAsking = false, bool suppressCompletionNotification = false)
         {
             Guid request = Guid.NewGuid();
 
@@ -3364,9 +3368,18 @@ namespace Stardrop.Views
 
             // Display warnings
             SetLockState(false);
-            foreach (string warningMessage in warnings)
+
+            // One window for the whole batch. A collection can produce a dozen warnings at once, and a dialog per
+            // mod is a wall of dismissals standing between the user and the summary that actually matters
+            if (warnings.Count > 0)
             {
-                await CreateWarningWindow(warningMessage, Program.translation.Get("internal.ok"));
+                var warningText = String.Format(Program.translation.Get("ui.warning.install_warnings"), warnings.Count);
+                foreach (string warningMessage in warnings)
+                {
+                    warningText += $"{Environment.NewLine}{Environment.NewLine}{warningMessage}";
+                }
+
+                await CreateWarningWindow(warningText, Program.translation.Get("internal.ok"), windowWidth: 560);
             }
 
             // Cache the local data
@@ -3393,7 +3406,35 @@ namespace Stardrop.Views
             UpdateProfile(GetCurrentProfile());
 
             Program.helper.Log($"Add mods request received ({request}): Processed");
+
+            if (suppressCompletionNotification is false)
+            {
+                ReportModsInstalled(addedMods);
+            }
+
             return addedMods;
+        }
+
+        /// <summary>
+        /// Reports an install in the corner of the window rather than in a dialog, so nothing waits on the user
+        /// before the next mod can be handled. A second report while the first is still on screen counts up instead
+        /// of stacking, which is what keeps a bulk install to one line.
+        /// </summary>
+        private static void ReportModsInstalled(IReadOnlyList<Mod> mods)
+        {
+            if (mods.Count == 0)
+            {
+                return;
+            }
+
+            // A malformed manifest can leave the name empty, and the count is what the batch message leans on anyway
+            var firstName = mods.Select(m => m.Name).FirstOrDefault(name => String.IsNullOrWhiteSpace(name) is false) ?? Program.translation.Get("internal.unknown");
+
+            NotificationCenter.Shared.ShowAggregated(
+                key: "mods-installed",
+                message: String.Format(Program.translation.Get("ui.notification.mod_installed"), firstName),
+                aggregateFormat: Program.translation.Get("ui.notification.mods_installed"),
+                amount: mods.Count);
         }
 
         private void CreateDirectoryJunctions(List<string> arguments)

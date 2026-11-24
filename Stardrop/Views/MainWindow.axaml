@@ -706,5 +706,9 @@
                 </Grid>
             </Grid>
 		</Border>
+
+		<!-- Install results land here instead of in a dialog per mod. Pinned over the grid but sized to its own
+		     content, so a click anywhere but a card still reaches what is underneath -->
+		<view:ToastHost Grid.Row="0" Grid.RowSpan="6" Grid.ColumnSpan="2" Margin="0 0 16 40" HorizontalAlignment="Right" VerticalAlignment="Bottom" />
 	</Grid>
 </Window>

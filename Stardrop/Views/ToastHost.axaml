@@ -1,0 +1,72 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:i="clr-namespace:Projektanker.Icons.Avalonia;assembly=Projektanker.Icons.Avalonia"
+             xmlns:i18n="clr-namespace:Stardrop.Utilities.Extension"
+             x:Class="Stardrop.Views.ToastHost">
+
+	<UserControl.Styles>
+		<Style Selector="Border.toast">
+			<Setter Property="Background" Value="{DynamicResource ThemeBackgroundBrush}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource HighlightBrush}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="3" />
+			<Setter Property="Padding" Value="10 8" />
+			<Setter Property="Margin" Value="0 6 0 0" />
+			<Setter Property="MaxWidth" Value="380" />
+			<Setter Property="BoxShadow" Value="0 2 6 0 #66000000" />
+		</Style>
+		<Style Selector="Border.toast TextBlock.toastMessage">
+			<Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="FontSize" Value="12" />
+		</Style>
+		<Style Selector="Border.accent">
+			<Setter Property="Background" Value="{DynamicResource ThemeForegroundBrush}" />
+			<Setter Property="Width" Value="3" />
+			<Setter Property="CornerRadius" Value="2" />
+			<Setter Property="Margin" Value="0 0 8 0" />
+		</Style>
+		<Style Selector="Border.toast.success Border.accent">
+			<Setter Property="Background" Value="{DynamicResource UpdateAvailableBrush}" />
+		</Style>
+		<Style Selector="Border.toast.warning Border.accent">
+			<Setter Property="Background" Value="{DynamicResource UpdateUnofficialBrush}" />
+		</Style>
+		<Style Selector="Border.toast.error Border.accent">
+			<Setter Property="Background" Value="{DynamicResource UpdateBrokenBrush}" />
+		</Style>
+		<Style Selector="Button.toastClose">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="2" />
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="VerticalAlignment" Value="Top" />
+			<Setter Property="Margin" Value="6 0 0 0" />
+			<Setter Property="Foreground" Value="{DynamicResource ThemeForegroundBrush}" />
+		</Style>
+		<Style Selector="Button.toastClose:pointerover /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.toastClose:pressed /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+	</UserControl.Styles>
+
+	<!-- Sized to its content and pinned to the corner, so everything outside a card still reaches the window below -->
+	<ItemsControl Items="{Binding Notifications}" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+		<ItemsControl.ItemTemplate>
+			<DataTemplate>
+				<Border Classes="toast" Classes.success="{Binding IsSuccess}" Classes.warning="{Binding IsWarning}" Classes.error="{Binding IsError}">
+					<!-- The text gets the star column rather than a horizontal StackPanel, so it wraps at the card width -->
+					<Grid ColumnDefinitions="Auto,Auto,*,Auto">
+						<Border Grid.Column="0" Classes="accent" />
+						<i:Icon Grid.Column="1" Value="{Binding Icon}" FontSize="16" Foreground="{DynamicResource ThemeForegroundBrush}" VerticalAlignment="Top" Margin="0 1 8 0" />
+						<TextBlock Grid.Column="2" Classes="toastMessage" Text="{Binding Message}" />
+						<Button Grid.Column="3" Classes="toastClose" i:Attached.Icon="mdi-close" ToolTip.Tip="{i18n:Translate internal.dismiss}" Click="DismissButton_Click" />
+					</Grid>
+				</Border>
+			</DataTemplate>
+		</ItemsControl.ItemTemplate>
+	</ItemsControl>
+</UserControl>
